@@ -31,6 +31,16 @@ setlocal EnableExtensions EnableDelayedExpansion
 
 set "EXIT_CODE=0"
 
+REM ---- Prevent concurrent execution ----------------------------------------
+set "LOCK_FILE=%TEMP%\dev-bootstrap-first-run.lock"
+if exist "%LOCK_FILE%" (
+    echo [ERROR] Another instance appears to be already running.
+    echo         Lock file: %LOCK_FILE%
+    echo         If no other instance is running, delete that file and retry.
+    exit /b 99
+)
+echo %DATE% %TIME% > "%LOCK_FILE%"
+
 REM ---- Defaults --------------------------------------------------------------
 if not defined DEV_BOOTSTRAP_DEST  set "DEV_BOOTSTRAP_DEST=%USERPROFILE%\PominiLRM\dev-bootstrap-first"
 if not defined DEV_BOOTSTRAP_FINAL set "DEV_BOOTSTRAP_FINAL=%USERPROFILE%\PominiLRM\dev-bootstrap"
@@ -319,22 +329,37 @@ set "DST_CONFIG_DIR=%FINAL_TARGET%\config"
 if not exist "%FINAL_TARGET%" mkdir "%FINAL_TARGET%" >nul 2>nul
 if not exist "%DST_CONFIG_DIR%" mkdir "%DST_CONFIG_DIR%" >nul 2>nul
 
+set "COPY_WARN=0"
+
 if exist "%SRC_CONFIG%" (
-    copy /Y "%SRC_CONFIG%" "%DST_CONFIG_DIR%\config.json" >> "%LOG_FILE%" 2>&1
+    copy /Y "%SRC_CONFIG%" "%DST_CONFIG_DIR%\config.json" >nul 2>&1
     call :log "Copied config.json -> %DST_CONFIG_DIR%\config.json"
     echo        config.json copied.
 ) else (
     call :log "WARNING: %SRC_CONFIG% not found, nothing to copy."
     echo [WARN] config.json was not generated in %REPO_DIR%\config.
+    set "COPY_WARN=1"
 )
 
 if exist "%SRC_ENV%" (
-    copy /Y "%SRC_ENV%" "%FINAL_TARGET%\.env" >> "%LOG_FILE%" 2>&1
+    copy /Y "%SRC_ENV%" "%FINAL_TARGET%\.env" >nul 2>&1
     call :log "Copied .env -> %FINAL_TARGET%\.env"
     echo        .env copied.
 ) else (
     call :log "WARNING: %SRC_ENV% not found, nothing to copy."
     echo [WARN] .env was not generated in %REPO_DIR%.
+    set "COPY_WARN=1"
+)
+
+if "!COPY_WARN!"=="1" if "!EXIT_CODE!"=="0" (
+    call :log "ERROR: Bootstrap ran but expected output files were not generated."
+    echo.
+    echo [ERROR] Bootstrap completed but config.json and/or .env were not produced.
+    echo         Suggestions:
+    echo           - Re-run with --keep to inspect %REPO_DIR% and review the log.
+    echo           - Make sure you completed all interactive prompts during Step 5.
+    echo           - Check %LOG_FILE% for PowerShell errors.
+    set "EXIT_CODE=81"
 )
 
 :cleanup_and_exit
@@ -375,6 +400,7 @@ if "%EXIT_CODE%"=="0" (
 )
 
 echo.
+if exist "%LOCK_FILE%" del /F /Q "%LOCK_FILE%" >nul 2>nul
 pause
 endlocal & exit /b %EXIT_CODE%
 
@@ -384,7 +410,7 @@ REM Subroutines
 REM ============================================================================
 
 :log
->> "%LOG_FILE%" echo [%DATE% %TIME%] %~1
+2>nul ( >> "%LOG_FILE%" echo [%DATE% %TIME%] %~1 )
 exit /b 0
 
 :refresh_path
