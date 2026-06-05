@@ -669,12 +669,8 @@ if not defined RESOLVED_PWSH (
 exit /b 0
 
 :set_pwsh_if_valid
-setlocal EnableDelayedExpansion
 set "_PWSH_CANDIDATE=%~1"
-if "%_PWSH_CANDIDATE%"=="" (
-    endlocal
-    exit /b 1
-)
+if "%_PWSH_CANDIDATE%"=="" exit /b 1
 
 REM If candidate is just the command name "pwsh", resolve it via where to get absolute path.
 REM This prevents accepting WindowsApps aliases that don't support -File mode.
@@ -683,29 +679,20 @@ if /I "%_PWSH_CANDIDATE%"=="pwsh" (
     for /F "delims=" %%P in ('where pwsh 2^>nul') do (
         if not defined _PWSH_RESOLVED set "_PWSH_RESOLVED=%%~fP"
     )
-    if not defined _PWSH_RESOLVED (
-        endlocal
-        exit /b 1
-    )
-    set "_PWSH_CANDIDATE=!_PWSH_RESOLVED!"
+    if not defined _PWSH_RESOLVED exit /b 1
+    set "_PWSH_CANDIDATE=%_PWSH_RESOLVED%"
 )
 
 REM Candidate must exist as a file
-if not exist "!_PWSH_CANDIDATE!" (
-    endlocal
-    exit /b 1
-)
+if not exist "%_PWSH_CANDIDATE%" exit /b 1
 
 REM Validate real script execution support. Some WindowsApps aliases answer -Command
 REM but fail with -File from cmd.exe.
 set "_PWSH_PROBE=%TEMP%\dev-bootstrap-first-pwsh-probe.ps1"
-> "!_PWSH_PROBE!" echo exit 0
-"!_PWSH_CANDIDATE!" -NoLogo -NoProfile -File "!_PWSH_PROBE!" >nul 2>nul
-if errorlevel 1 (
-    endlocal
-    exit /b 1
-)
-endlocal & set "RESOLVED_PWSH=%_PWSH_CANDIDATE%"
+> "%_PWSH_PROBE%" echo exit 0
+"%_PWSH_CANDIDATE%" -NoLogo -NoProfile -File "%_PWSH_PROBE%" >nul 2>nul
+if errorlevel 1 exit /b 1
+set "RESOLVED_PWSH=%_PWSH_CANDIDATE%"
 exit /b 0
 
 :refresh_path
