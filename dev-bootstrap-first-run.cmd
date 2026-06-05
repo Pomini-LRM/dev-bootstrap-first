@@ -53,6 +53,7 @@ set "REF=%DEV_BOOTSTRAP_REF%"
 set "DEBUG=%DEV_BOOTSTRAP_DEBUG%"
 set "FORCE=0"
 set "KEEP=0"
+set "STAGE_READY=0"
 
 REM ---- Parse arguments -------------------------------------------------------
 :parse_args
@@ -114,6 +115,7 @@ call :debug "Session initialized"
 
 REM ---- Step 1: Download ZIP (skip if already extracted and not forced) ------
 if "%FORCE%"=="0" if exist "%REPO_DIR%\dev-bootstrap.ps1" (
+    set "STAGE_READY=1"
     call :log "Repository already present at %REPO_DIR%. Skipping download."
     echo [SKIP] Repository already present. Use --force to re-download.
     goto run_scripts
@@ -123,7 +125,15 @@ REM Clean previous staging artifacts.
 if exist "%ZIP_FILE%"     del /F /Q "%ZIP_FILE%" >nul 2>nul
 if exist "%EXTRACT_DIR%"  rmdir /S /Q "%EXTRACT_DIR%" >nul 2>nul
 if exist "%REPO_DIR%"     rmdir /S /Q "%REPO_DIR%" >nul 2>nul
+if not exist "%TMP_DIR%" mkdir "%TMP_DIR%" >nul 2>nul
 mkdir "%EXTRACT_DIR%" >nul 2>nul
+if not exist "%EXTRACT_DIR%" (
+    call :log "ERROR: Could not create extraction directory %EXTRACT_DIR%."
+    echo [ERROR] Could not prepare extraction directory.
+    echo         Path: %EXTRACT_DIR%
+    set "EXIT_CODE=21"
+    goto cleanup_and_exit
+)
 
 echo [INFO] Downloading repository ZIP...
 call :log "Downloading %REPO_URL% to %ZIP_FILE%"
@@ -178,10 +188,8 @@ where tar >nul 2>nul
 if %ERRORLEVEL% EQU 0 (
     call :debug "Extraction tool selected: tar"
     call :log "Using tar -xf to extract."
-    pushd "%EXTRACT_DIR%" >nul
-    tar -xf "%ZIP_FILE%" >> "%LOG_FILE%" 2>&1
+    tar -xf "%ZIP_FILE%" -C "%EXTRACT_DIR%" >> "%LOG_FILE%" 2>&1
     if !ERRORLEVEL! EQU 0 set "EXTRACT_OK=1"
-    popd >nul
     if not "!EXTRACT_OK!"=="1" call :debug "tar extraction failed with code !ERRORLEVEL!"
 )
 if %ERRORLEVEL% NEQ 0 (
@@ -258,8 +266,17 @@ if errorlevel 8 (
 
 echo        Repository staged at %REPO_DIR%.
 call :debug "Repository staged in: %REPO_DIR%"
+set "STAGE_READY=1"
 
 :run_scripts
+
+if not "%STAGE_READY%"=="1" (
+    call :log "ERROR: Internal staging guard triggered. Repository was not prepared."
+    echo [ERROR] Internal staging guard triggered.
+    echo         Repository was not prepared correctly.
+    set "EXIT_CODE=41"
+    goto cleanup_and_exit
+)
 
 if not exist "%REPO_DIR%\dev-bootstrap.ps1" (
     call :log "ERROR: %REPO_DIR%\dev-bootstrap.ps1 not found."
@@ -318,10 +335,18 @@ if %ERRORLEVEL% EQU 0 (
 if "%PWSH_EXE%"=="" (
     if exist "%ProgramFiles%\PowerShell\7\pwsh.exe" set "PWSH_EXE=%ProgramFiles%\PowerShell\7\pwsh.exe"
 )
+set "PWSH_EXE=%PWSH_EXE:\"=%"
 if "%PWSH_EXE%"=="" (
     call :log "ERROR: PowerShell 7 (pwsh) not found after prerequisites step."
     echo [ERROR] PowerShell 7 was not installed correctly. Open a new terminal and re-run.
     set "EXIT_CODE=60"
+    goto cleanup_and_exit
+)
+if not exist "%PWSH_EXE%" (
+    call :log "ERROR: Resolved pwsh path does not exist: %PWSH_EXE%"
+    echo [ERROR] Resolved PowerShell 7 path is invalid.
+    echo         Path: %PWSH_EXE%
+    set "EXIT_CODE=61"
     goto cleanup_and_exit
 )
 
