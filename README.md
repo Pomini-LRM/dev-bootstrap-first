@@ -55,6 +55,7 @@ Environment variables (set them before launching the `.cmd`):
 | `DEV_BOOTSTRAP_DEST`   | `%USERPROFILE%\PominiLRM\dev-bootstrap-first`    | Staging folder (download + extract).         |
 | `DEV_BOOTSTRAP_FINAL`  | `%USERPROFILE%\PominiLRM\dev-bootstrap`           | Handoff folder for `config.json` and `.env`. |
 | `DEV_BOOTSTRAP_REF`    | `main`                                           | Branch or tag of `dev-bootstrap` to use.     |
+| `DEV_BOOTSTRAP_DEBUG`  | `0`                                              | `1` enables additional debug messages in console and log. |
 
 Command-line flags (run from `cmd.exe`):
 
@@ -68,6 +69,15 @@ dev-bootstrap-first-run.cmd --ref   develop
 
 - `--force`: re-download the ZIP even if the repository is already staged.
 - `--keep`: do not delete the staging folder at the end (useful for debugging).
+
+Debug mode example:
+
+```cmd
+set DEV_BOOTSTRAP_DEBUG=1
+dev-bootstrap-first-run.cmd --keep
+```
+
+Set `DEV_BOOTSTRAP_DEBUG=0` (or unset it) to return to standard output.
 
 ---
 

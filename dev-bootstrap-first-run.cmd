@@ -45,10 +45,12 @@ REM ---- Defaults --------------------------------------------------------------
 if not defined DEV_BOOTSTRAP_DEST  set "DEV_BOOTSTRAP_DEST=%USERPROFILE%\PominiLRM\dev-bootstrap-first"
 if not defined DEV_BOOTSTRAP_FINAL set "DEV_BOOTSTRAP_FINAL=%USERPROFILE%\PominiLRM\dev-bootstrap"
 if not defined DEV_BOOTSTRAP_REF   set "DEV_BOOTSTRAP_REF=main"
+if not defined DEV_BOOTSTRAP_DEBUG set "DEV_BOOTSTRAP_DEBUG=0"
 
 set "DEST=%DEV_BOOTSTRAP_DEST%"
 set "FINAL_TARGET=%DEV_BOOTSTRAP_FINAL%"
 set "REF=%DEV_BOOTSTRAP_REF%"
+set "DEBUG=%DEV_BOOTSTRAP_DEBUG%"
 set "FORCE=0"
 set "KEEP=0"
 
@@ -89,6 +91,7 @@ call :log "Final target   : %FINAL_TARGET%"
 call :log "Repo URL       : %REPO_URL%"
 call :log "Force          : %FORCE%"
 call :log "Keep staging   : %KEEP%"
+call :log "Debug mode     : %DEBUG%"
 call :log "============================================================"
 
 echo.
@@ -99,8 +102,15 @@ echo  Staging folder : %DEST%
 echo  Final folder   : %FINAL_TARGET%
 echo  Source         : %REPO_URL%
 echo  Log file       : %LOG_FILE%
+echo  Debug mode     : %DEBUG%
 echo ============================================================
 echo.
+echo [INFO] Keep this window open until the process completes.
+echo [INFO] You may be prompted for elevation during prerequisites installation.
+
+call :phase "1/7" "Download repository"
+call :debug "Launcher path: %~f0"
+call :debug "User: %USERNAME% | Machine: %COMPUTERNAME%"
 
 REM ---- Step 1: Download ZIP (skip if already extracted and not forced) ------
 if "%FORCE%"=="0" if exist "%REPO_DIR%\dev-bootstrap.ps1" (
@@ -115,24 +125,34 @@ if exist "%EXTRACT_DIR%"  rmdir /S /Q "%EXTRACT_DIR%" >nul 2>nul
 if exist "%REPO_DIR%"     rmdir /S /Q "%REPO_DIR%" >nul 2>nul
 mkdir "%EXTRACT_DIR%" >nul 2>nul
 
-echo [1/5] Downloading repository ZIP...
+echo [INFO] Downloading repository ZIP...
 call :log "Downloading %REPO_URL% to %ZIP_FILE%"
 
 set "DOWNLOAD_OK=0"
 
 where curl >nul 2>nul
 if %ERRORLEVEL% EQU 0 (
+    call :debug "Download tool selected: curl"
     call :log "Using curl to download."
     curl -L --fail --silent --show-error -o "%ZIP_FILE%" "%REPO_URL%" >> "%LOG_FILE%" 2>&1
     if !ERRORLEVEL! EQU 0 if exist "%ZIP_FILE%" set "DOWNLOAD_OK=1"
+    if not "!DOWNLOAD_OK!"=="1" call :debug "curl download failed with code !ERRORLEVEL!"
+)
+if %ERRORLEVEL% NEQ 0 (
+    call :debug "curl not found."
 )
 
 if "%DOWNLOAD_OK%"=="0" (
+    echo [INFO] Primary downloader unavailable or failed. Trying fallback...
     where bitsadmin >nul 2>nul
     if !ERRORLEVEL! EQU 0 (
+        call :debug "Download fallback selected: bitsadmin"
         call :log "Using bitsadmin fallback to download."
         bitsadmin /transfer dev-bootstrap-first-run /priority FOREGROUND "%REPO_URL%" "%ZIP_FILE%" >> "%LOG_FILE%" 2>&1
         if !ERRORLEVEL! EQU 0 if exist "%ZIP_FILE%" set "DOWNLOAD_OK=1"
+        if not "!DOWNLOAD_OK!"=="1" call :debug "bitsadmin download failed with code !ERRORLEVEL!"
+    ) else (
+        call :debug "bitsadmin not found."
     )
 )
 
@@ -145,37 +165,50 @@ if "%DOWNLOAD_OK%"=="0" (
 )
 
 call :log "Download completed: %ZIP_FILE%"
-echo        Download OK.
+echo [OK] Download completed.
 
 REM ---- Step 2: Extract -------------------------------------------------------
-echo [2/5] Extracting archive...
+call :phase "2/7" "Extract archive"
+echo [INFO] Extracting archive...
 call :log "Extracting %ZIP_FILE% into %EXTRACT_DIR%"
 
 set "EXTRACT_OK=0"
 
 where tar >nul 2>nul
 if %ERRORLEVEL% EQU 0 (
+    call :debug "Extraction tool selected: tar"
     call :log "Using tar -xf to extract."
     pushd "%EXTRACT_DIR%" >nul
     tar -xf "%ZIP_FILE%" >> "%LOG_FILE%" 2>&1
     if !ERRORLEVEL! EQU 0 set "EXTRACT_OK=1"
     popd >nul
+    if not "!EXTRACT_OK!"=="1" call :debug "tar extraction failed with code !ERRORLEVEL!"
+)
+if %ERRORLEVEL% NEQ 0 (
+    call :debug "tar not found."
 )
 
 if "%EXTRACT_OK%"=="0" (
+    echo [INFO] Primary extractor unavailable or failed. Trying fallback...
     where powershell >nul 2>nul
     if !ERRORLEVEL! EQU 0 (
+        call :debug "Extraction fallback selected: powershell Expand-Archive"
         call :log "Using Windows PowerShell Expand-Archive to extract."
         powershell -NoProfile -ExecutionPolicy Bypass -Command "try { Expand-Archive -LiteralPath '%ZIP_FILE%' -DestinationPath '%EXTRACT_DIR%' -Force; exit 0 } catch { Write-Error $_; exit 1 }" >> "%LOG_FILE%" 2>&1
         if !ERRORLEVEL! EQU 0 set "EXTRACT_OK=1"
+        if not "!EXTRACT_OK!"=="1" call :debug "Expand-Archive failed with code !ERRORLEVEL!"
+    ) else (
+        call :debug "powershell.exe not found."
     )
 )
 
 if "%EXTRACT_OK%"=="0" (
+    call :debug "Extraction fallback selected: cscript/vbs"
     call :log "Falling back to VBScript Shell.Application extraction."
     call :write_vbs_unzip
     cscript //nologo "%VBS_FILE%" "%ZIP_FILE%" "%EXTRACT_DIR%" >> "%LOG_FILE%" 2>&1
     if !ERRORLEVEL! EQU 0 set "EXTRACT_OK=1"
+    if not "!EXTRACT_OK!"=="1" call :debug "VBScript extraction failed with code !ERRORLEVEL!"
 )
 
 if "%EXTRACT_OK%"=="0" (
@@ -186,10 +219,11 @@ if "%EXTRACT_OK%"=="0" (
 )
 
 call :log "Extraction completed."
-echo        Extraction OK.
+echo [OK] Extraction completed.
 
 REM ---- Step 3: Locate extracted folder and move to repo ----------------------
-echo [3/5] Locating extracted repository...
+call :phase "3/7" "Stage repository"
+echo [INFO] Locating extracted repository...
 
 set "FOUND_DIR="
 if exist "%EXTRACT_DIR%\%EXTRACTED_DIR_NAME%\dev-bootstrap.ps1" (
@@ -208,6 +242,7 @@ if "%FOUND_DIR%"=="" (
 )
 
 call :log "Extracted repo at: %FOUND_DIR%"
+call :debug "Extracted repository folder: %FOUND_DIR%"
 
 REM Move (rename) to %REPO_DIR%. Use robocopy + rmdir for reliability.
 if exist "%REPO_DIR%" rmdir /S /Q "%REPO_DIR%" >nul 2>nul
@@ -222,6 +257,7 @@ if errorlevel 8 (
 )
 
 echo        Repository staged at %REPO_DIR%.
+call :debug "Repository staged in: %REPO_DIR%"
 
 :run_scripts
 
@@ -233,17 +269,20 @@ if not exist "%REPO_DIR%\dev-bootstrap.ps1" (
 )
 
 REM ---- Step 4: Install prerequisites (PowerShell 7) --------------------------
-echo [4/5] Installing prerequisites (PowerShell 7)...
+call :phase "4/7" "Install prerequisites"
+echo [INFO] Installing prerequisites (PowerShell 7)...
 call :log "Running install-prerequisites-windows.ps1"
 
 set "PREREQ_SCRIPT=%REPO_DIR%\scripts\install-prerequisites-windows.ps1"
 if exist "%PREREQ_SCRIPT%" (
     where pwsh >nul 2>nul
     if !ERRORLEVEL! EQU 0 (
+        call :debug "Prerequisites host: pwsh"
         pwsh -NoProfile -ExecutionPolicy Bypass -File "%PREREQ_SCRIPT%"
     ) else (
         where powershell >nul 2>nul
         if !ERRORLEVEL! EQU 0 (
+            call :debug "Prerequisites host fallback: powershell"
             powershell -NoProfile -ExecutionPolicy Bypass -File "%PREREQ_SCRIPT%"
         ) else (
             call :log "ERROR: Neither pwsh nor powershell is available."
@@ -262,7 +301,8 @@ if exist "%PREREQ_SCRIPT%" (
 )
 
 REM ---- Step 5: Interactive setup + main bootstrap ----------------------------
-echo [5/5] Running interactive setup and bootstrap...
+call :phase "5/7" "Interactive setup and bootstrap"
+echo [INFO] Running interactive setup and bootstrap...
 call :log "Locating pwsh for setup-config-interactive.ps1 and dev-bootstrap.ps1"
 
 REM After install-prerequisites, pwsh should be on PATH. Refresh PATH from registry.
@@ -286,6 +326,7 @@ if "%PWSH_EXE%"=="" (
 )
 
 call :log "Using pwsh at: %PWSH_EXE%"
+call :debug "Bootstrap host: %PWSH_EXE%"
 
 set "SETUP_SCRIPT=%REPO_DIR%\scripts\setup-config-interactive.ps1"
 if exist "%SETUP_SCRIPT%" (
@@ -318,8 +359,8 @@ if not "!BOOTSTRAP_RC!"=="0" (
 )
 
 REM ---- Step 6: Copy generated config files to final folder -------------------
-echo.
-echo Copying generated config files to %FINAL_TARGET% ...
+call :phase "6/7" "Copy generated configuration"
+echo [INFO] Copying generated config files to %FINAL_TARGET% ...
 call :log "Copying generated config.json and .env to final folder."
 
 set "SRC_CONFIG=%REPO_DIR%\config\config.json"
@@ -365,6 +406,7 @@ if "!COPY_WARN!"=="1" if "!EXIT_CODE!"=="0" (
 :cleanup_and_exit
 
 REM ---- Step 7: Clean up staging folder --------------------------------------
+call :phase "7/7" "Cleanup"
 if "%KEEP%"=="1" (
     call :log "Keep flag set or final target missing. Staging folder preserved at %DEST%."
     echo.
@@ -412,6 +454,19 @@ REM ============================================================================
 :log
 >> "%LOG_FILE%" <nul set /p "=[%DATE% %TIME%] %~1"
 >> "%LOG_FILE%" echo(
+exit /b 0
+
+:phase
+echo.
+echo ------------------------------------------------------------
+echo [PHASE %~1] %~2
+echo ------------------------------------------------------------
+call :log "PHASE %~1 - %~2"
+exit /b 0
+
+:debug
+if "%DEBUG%"=="1" echo [DEBUG] %~1
+call :log "DEBUG: %~1"
 exit /b 0
 
 :refresh_path

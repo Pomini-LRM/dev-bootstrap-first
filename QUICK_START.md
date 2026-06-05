@@ -50,6 +50,7 @@ Set these environment variables **before** launching the `.cmd`:
 | `DEV_BOOTSTRAP_DEST`  | `%USERPROFILE%\PominiLRM\dev-bootstrap-first`    | Staging folder                      |
 | `DEV_BOOTSTRAP_FINAL` | `%USERPROFILE%\PominiLRM\dev-bootstrap`           | Handoff folder for generated configs|
 | `DEV_BOOTSTRAP_REF`   | `main`                                           | Branch or tag to download           |
+| `DEV_BOOTSTRAP_DEBUG` | `0`                                              | `1` enables additional debug messages in console and log |
 
 Or pass flags from the command line:
 
@@ -59,6 +60,13 @@ dev-bootstrap-first-run.cmd --keep
 dev-bootstrap-first-run.cmd --dest  "C:\staging"
 dev-bootstrap-first-run.cmd --final "C:\code\dev-bootstrap"
 dev-bootstrap-first-run.cmd --ref   develop
+```
+
+Enable debug output when troubleshooting:
+
+```cmd
+set DEV_BOOTSTRAP_DEBUG=1
+dev-bootstrap-first-run.cmd --keep
 ```
 
 ---
