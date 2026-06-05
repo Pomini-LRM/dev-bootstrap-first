@@ -675,9 +675,12 @@ if "%_PWSH_CANDIDATE%"=="" exit /b 1
 REM If candidate is just the command name "pwsh", resolve it via where to get absolute path.
 REM This prevents accepting WindowsApps aliases that don't support -File mode.
 if /I "%_PWSH_CANDIDATE%"=="pwsh" (
+    set "_PWSH_RESOLVED="
     for /F "delims=" %%P in ('where pwsh 2^>nul') do (
-        set "_PWSH_CANDIDATE=%%~fP"
+        set "_PWSH_RESOLVED=%%~fP"
     )
+    if not defined _PWSH_RESOLVED exit /b 1
+    set "_PWSH_CANDIDATE=!_PWSH_RESOLVED!"
 )
 
 REM Candidate must exist as a file
