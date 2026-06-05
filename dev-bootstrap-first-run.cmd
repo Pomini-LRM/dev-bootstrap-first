@@ -410,7 +410,8 @@ REM Subroutines
 REM ============================================================================
 
 :log
-2>nul ( >> "%LOG_FILE%" echo [%DATE% %TIME%] %~1 )
+>> "%LOG_FILE%" <nul set /p "=[%DATE% %TIME%] %~1"
+>> "%LOG_FILE%" echo(
 exit /b 0
 
 :refresh_path
