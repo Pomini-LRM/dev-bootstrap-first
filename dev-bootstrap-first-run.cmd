@@ -262,18 +262,40 @@ REM ---- Step 3: Locate extracted folder and move to repo ----------------------
 call :phase "3/7" "Stage repository"
 echo [INFO] Locating extracted repository...
 
-set "FOUND_DIR="
-if exist "%EXTRACT_DIR%\%EXTRACTED_DIR_NAME%\dev-bootstrap.ps1" (
-    set "FOUND_DIR=%EXTRACT_DIR%\%EXTRACTED_DIR_NAME%"
-) else (
-    for /D %%D in ("%EXTRACT_DIR%\*") do (
-        if exist "%%~fD\dev-bootstrap.ps1" set "FOUND_DIR=%%~fD"
-    )
+REM Verify extraction produced output before searching.
+set "EXTRACT_DIR_EMPTY=1"
+for /D %%D in ("%EXTRACT_DIR%\*") do set "EXTRACT_DIR_EMPTY=0"
+for    %%F in ("%EXTRACT_DIR%\*") do set "EXTRACT_DIR_EMPTY=0"
+if "%EXTRACT_DIR_EMPTY%"=="1" (
+    call :log "ERROR: Extraction directory is empty."
+    echo [ERROR] Extraction directory is empty. Archive may be corrupt or incomplete.
+    echo         Path: %EXTRACT_DIR%
+    set "EXIT_CODE=25"
+    goto cleanup_and_exit
 )
 
-if "%FOUND_DIR%"=="" (
+REM Search for dev-bootstrap.ps1 at any depth inside EXTRACT_DIR.
+set "FOUND_DIR="
+set "FOUND_SCRIPT="
+for /F "delims=" %%F in ('dir /B /S "%EXTRACT_DIR%\dev-bootstrap.ps1" 2^>nul') do (
+    if not defined FOUND_SCRIPT set "FOUND_SCRIPT=%%F"
+)
+if defined FOUND_SCRIPT (
+    for %%F in ("%FOUND_SCRIPT%") do set "FOUND_DIR=%%~dpF"
+    REM Strip trailing backslash
+    if defined FOUND_DIR set "FOUND_DIR=!FOUND_DIR:~0,-1!"
+)
+
+if not defined FOUND_DIR (
     call :log "ERROR: Could not locate dev-bootstrap.ps1 in extracted archive."
-    echo [ERROR] Extracted archive does not contain dev-bootstrap.ps1.
+    echo [ERROR] dev-bootstrap.ps1 was not found in the downloaded repository.
+    echo         Searched: %EXTRACT_DIR%
+    echo.
+    echo         Top-level archive contents:
+    for /D %%D in ("%EXTRACT_DIR%\*") do echo           [DIR]  %%~nxD
+    for    %%F in ("%EXTRACT_DIR%\*") do echo           [FILE] %%~nxF
+    echo.
+    echo         This may indicate a different repository structure or wrong --ref value.
     set "EXIT_CODE=30"
     goto cleanup_and_exit
 )
