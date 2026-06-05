@@ -610,9 +610,8 @@ exit /b 1
 REM Resolve a working pwsh.exe by probing candidates with a lightweight command.
 set "RESOLVED_PWSH="
 
-REM 1) Try plain command invocation first.
-pwsh -NoLogo -NoProfile -Command "$PSVersionTable.PSVersion.Major" >nul 2>nul
-if !ERRORLEVEL! EQU 0 set "RESOLVED_PWSH=pwsh"
+REM 1) Try plain command invocation first, but only if -File mode works.
+call :set_pwsh_if_valid "pwsh"
 
 REM 2) Try paths from PATH lookup.
 for /F "delims=" %%P in ('where pwsh 2^>nul') do (
@@ -651,8 +650,15 @@ exit /b 0
 :set_pwsh_if_valid
 set "_PWSH_CANDIDATE=%~1"
 if "%_PWSH_CANDIDATE%"=="" exit /b 1
-if not exist "%_PWSH_CANDIDATE%" exit /b 1
-"%_PWSH_CANDIDATE%" -NoLogo -NoProfile -Command "$PSVersionTable.PSVersion.Major" >nul 2>nul
+
+REM Candidate can be a command token (pwsh) or a full path.
+if /I not "%_PWSH_CANDIDATE%"=="pwsh" if not exist "%_PWSH_CANDIDATE%" exit /b 1
+
+REM Validate real script execution support. Some WindowsApps aliases answer -Command
+REM but fail with -File from cmd.exe.
+set "_PWSH_PROBE=%TEMP%\dev-bootstrap-first-pwsh-probe.ps1"
+> "%_PWSH_PROBE%" echo exit 0
+"%_PWSH_CANDIDATE%" -NoLogo -NoProfile -File "%_PWSH_PROBE%" >nul 2>nul
 if errorlevel 1 exit /b 1
 set "RESOLVED_PWSH=%_PWSH_CANDIDATE%"
 exit /b 0
