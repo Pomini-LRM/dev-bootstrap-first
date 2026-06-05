@@ -80,9 +80,30 @@ set "LOG_FILE=%LOG_DIR%\first-run.log"
 set "VBS_FILE=%TMP_DIR%\unzip.vbs"
 
 REM ---- Prepare folders -------------------------------------------------------
-if not exist "%DEST%"    mkdir "%DEST%"    >nul 2>nul
-if not exist "%TMP_DIR%" mkdir "%TMP_DIR%" >nul 2>nul
-if not exist "%LOG_DIR%" mkdir "%LOG_DIR%" >nul 2>nul
+call :ensure_dir "%DEST%"
+if errorlevel 1 (
+    echo [ERROR] Could not prepare staging directory.
+    echo         Path: %DEST%
+    echo         Cause: access denied or path blocked by an existing file.
+    set "EXIT_CODE=11"
+    goto cleanup_and_exit
+)
+call :ensure_dir "%TMP_DIR%"
+if errorlevel 1 (
+    echo [ERROR] Could not prepare temp directory.
+    echo         Path: %TMP_DIR%
+    echo         Cause: access denied or path blocked by an existing file.
+    set "EXIT_CODE=12"
+    goto cleanup_and_exit
+)
+call :ensure_dir "%LOG_DIR%"
+if errorlevel 1 (
+    echo [ERROR] Could not prepare log directory.
+    echo         Path: %LOG_DIR%
+    echo         Cause: access denied or path blocked by an existing file.
+    set "EXIT_CODE=13"
+    goto cleanup_and_exit
+)
 
 call :log "============================================================"
 call :log "dev-bootstrap first-run launcher started"
@@ -125,12 +146,20 @@ REM Clean previous staging artifacts.
 if exist "%ZIP_FILE%"     del /F /Q "%ZIP_FILE%" >nul 2>nul
 if exist "%EXTRACT_DIR%"  rmdir /S /Q "%EXTRACT_DIR%" >nul 2>nul
 if exist "%REPO_DIR%"     rmdir /S /Q "%REPO_DIR%" >nul 2>nul
-if not exist "%TMP_DIR%" mkdir "%TMP_DIR%" >nul 2>nul
-mkdir "%EXTRACT_DIR%" >nul 2>nul
-if not exist "%EXTRACT_DIR%" (
+call :ensure_dir "%TMP_DIR%"
+if errorlevel 1 (
+    call :log "ERROR: Could not create temp directory %TMP_DIR%."
+    echo [ERROR] Could not prepare temp directory.
+    echo         Path: %TMP_DIR%
+    set "EXIT_CODE=22"
+    goto cleanup_and_exit
+)
+call :ensure_dir "%EXTRACT_DIR%"
+if errorlevel 1 (
     call :log "ERROR: Could not create extraction directory %EXTRACT_DIR%."
     echo [ERROR] Could not prepare extraction directory.
     echo         Path: %EXTRACT_DIR%
+    echo         Cause: access denied or path blocked by an existing file.
     set "EXIT_CODE=21"
     goto cleanup_and_exit
 )
@@ -494,6 +523,15 @@ if "%DEBUG%"=="1" (
     call :log "DEBUG: %~1"
 )
 exit /b 0
+
+:ensure_dir
+set "_ENSURE_DIR=%~1"
+if "%_ENSURE_DIR%"=="" exit /b 1
+if exist "%_ENSURE_DIR%\" exit /b 0
+if exist "%_ENSURE_DIR%" del /F /Q "%_ENSURE_DIR%" >nul 2>nul
+mkdir "%_ENSURE_DIR%" >nul 2>nul
+if exist "%_ENSURE_DIR%\" exit /b 0
+exit /b 1
 
 :refresh_path
 REM Refresh PATH from the registry so newly installed tools (pwsh) are visible.
