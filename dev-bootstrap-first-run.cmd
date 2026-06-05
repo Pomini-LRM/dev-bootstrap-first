@@ -129,6 +129,15 @@ echo ============================================================
 echo.
 echo [INFO] Keep this window open until the process completes.
 echo [INFO] You may be prompted for elevation during prerequisites installation.
+echo [INFO] Execution plan:
+echo        1/7 Download repository
+echo        2/7 Extract archive
+echo        3/7 Stage repository
+echo        4/7 Install prerequisites
+echo        5/7 Interactive setup and bootstrap
+echo        6/7 Copy generated configuration
+echo        7/7 Cleanup
+echo.
 
 call :phase "1/7" "Download repository"
 call :debug "Launcher started"
@@ -139,6 +148,10 @@ if "%FORCE%"=="0" if exist "%REPO_DIR%\dev-bootstrap.ps1" (
     set "STAGE_READY=1"
     call :log "Repository already present at %REPO_DIR%. Skipping download."
     echo [SKIP] Repository already present. Use --force to re-download.
+    call :phase "2/7" "Extract archive"
+    echo [SKIP] Phase 2/7 skipped because an existing staged repository was found.
+    call :phase "3/7" "Stage repository"
+    echo [SKIP] Phase 3/7 skipped because an existing staged repository was found.
     goto run_scripts
 )
 
@@ -392,6 +405,8 @@ if exist "%PREREQ_SCRIPT%" (
     )
 )
 
+echo [OK] Phase 4/7 completed.
+
 REM ---- Step 5: Interactive setup + main bootstrap ----------------------------
 call :phase "5/7" "Interactive setup and bootstrap"
 echo [INFO] Running interactive setup and bootstrap...
@@ -401,6 +416,21 @@ REM After install-prerequisites, pwsh should be on PATH. Refresh PATH from regis
 call :refresh_path
 call :resolve_pwsh
 set "PWSH_EXE=!RESOLVED_PWSH!"
+if not defined PWSH_EXE (
+    call :log "pwsh not detected in phase 5. Running one retry (refresh + winget + resolve)."
+    echo [WARN] PowerShell 7 was not detected yet. Running one retry...
+    where winget >nul 2>nul
+    if !ERRORLEVEL! EQU 0 (
+        echo [INFO] Retrying PowerShell 7 installation via winget...
+        winget install --id Microsoft.PowerShell --exact --silent --accept-package-agreements --accept-source-agreements >nul 2>&1
+        call :log "Phase 5 retry: winget install attempted."
+    ) else (
+        call :log "Phase 5 retry: winget not available."
+    )
+    call :refresh_path
+    call :resolve_pwsh
+    set "PWSH_EXE=!RESOLVED_PWSH!"
+)
 if not defined PWSH_EXE (
     call :log "ERROR: PowerShell 7 (pwsh) not found after prerequisites step."
     echo [ERROR] PowerShell 7 was not found on this machine.
