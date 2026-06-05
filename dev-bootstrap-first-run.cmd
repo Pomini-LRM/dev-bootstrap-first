@@ -30,7 +30,7 @@ REM ============================================================================
 setlocal EnableExtensions EnableDelayedExpansion
 
 set "EXIT_CODE=0"
-set "SCRIPT_VERSION=2026.06.05.4"
+set "SCRIPT_VERSION=2026.06.05.5"
 
 REM ---- Prevent concurrent execution ----------------------------------------
 set "LOCK_FILE=%TEMP%\dev-bootstrap-first-run.lock"
@@ -121,33 +121,36 @@ call :log "============================================================"
 
 echo.
 echo ============================================================
-echo  dev-bootstrap - First Run Launcher
+echo  Welcome to dev-bootstrap First Run
 echo ============================================================
+echo  This wizard prepares your machine step by step.
+echo.
 echo  Staging folder : %DEST%
-echo  Final folder   : %FINAL_TARGET%
+echo  Output folder  : %FINAL_TARGET%
 echo  Source         : %REPO_URL%
 echo  Log file       : %LOG_FILE%
-echo  Debug mode     : %DEBUG%
 echo  Version        : %SCRIPT_VERSION%
 echo ============================================================
 echo.
-echo [INFO] Keep this window open until the process completes.
-echo [INFO] You may be prompted for elevation during prerequisites installation.
-echo [INFO] Execution plan:
-echo        1/7 Download repository
+echo [INFO] Keep this window open until completion.
+echo [INFO] You may be asked for Administrator permission during prerequisites installation.
+echo [INFO] What will happen:
+echo        1/7 Download repository files
 echo        2/7 Extract archive
-echo        3/7 Stage repository
+echo        3/7 Prepare local staging
 echo        4/7 Install prerequisites
-echo        5/7 Interactive setup and bootstrap
+echo        5/7 Run interactive setup and bootstrap
 echo        6/7 Copy generated configuration
 echo        7/7 Cleanup
 echo.
+echo [TIP] If you used --keep in a previous run, some phases may be skipped.
+echo.
 
-call :phase "1/7" "Download repository"
 call :debug "Launcher started"
 call :debug "Session initialized"
 
 REM ---- Step 1: Download ZIP (skip if already extracted and not forced) ------
+call :phase "1/7" "Download repository"
 if "%FORCE%"=="0" if exist "%REPO_DIR%\dev-bootstrap.ps1" (
     set "STAGE_READY=1"
     call :log "Repository already present at %REPO_DIR%. Skipping download."
