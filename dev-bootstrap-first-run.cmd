@@ -398,15 +398,19 @@ call :log "Locating pwsh for setup-config-interactive.ps1 and dev-bootstrap.ps1"
 REM After install-prerequisites, pwsh should be on PATH. Refresh PATH from registry.
 call :refresh_path
 
+REM Search for the real pwsh.exe, skipping the WindowsApps execution-alias stub.
+REM The stub (created by winget) does not support -File when called from cmd.exe.
 set "PWSH_EXE="
 for /F "delims=" %%P in ('where pwsh 2^>nul') do (
-    if not defined PWSH_EXE set "PWSH_EXE=%%P"
+    if not defined PWSH_EXE (
+        echo %%P | findstr /I "WindowsApps" >nul 2>nul
+        if errorlevel 1 set "PWSH_EXE=%%P"
+    )
 )
-REM Explicit fallback paths: covers winget per-user and system-wide installs
+REM Explicit fallback paths in preference order: real installation dirs only.
 if not defined PWSH_EXE (
     for %%D in (
         "%ProgramFiles%\PowerShell\7\pwsh.exe"
-        "%LOCALAPPDATA%\Microsoft\WindowsApps\pwsh.exe"
         "C:\Program Files\PowerShell\7\pwsh.exe"
     ) do (
         if not defined PWSH_EXE if exist %%D set "PWSH_EXE=%%~D"
@@ -453,10 +457,9 @@ if exist "%SETUP_SCRIPT%" (
 )
 
 call :log "Running dev-bootstrap.ps1"
-pushd "%REPO_DIR%" >nul
-"%PWSH_EXE%" -NoProfile -ExecutionPolicy Bypass -File "%REPO_DIR%\dev-bootstrap.ps1"
+REM Use -WorkingDirectory instead of pushd so CMD working dir issues do not affect pwsh.
+"%PWSH_EXE%" -NoProfile -ExecutionPolicy Bypass -WorkingDirectory "%REPO_DIR%" -File "%REPO_DIR%\dev-bootstrap.ps1"
 set "BOOTSTRAP_RC=!ERRORLEVEL!"
-popd >nul
 
 call :log "dev-bootstrap.ps1 exited with code !BOOTSTRAP_RC!"
 
