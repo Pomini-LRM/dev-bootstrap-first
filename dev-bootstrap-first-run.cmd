@@ -367,21 +367,23 @@ if exist "%PREREQ_SCRIPT%" (
     call :log "WARNING: %PREREQ_SCRIPT% not found. Attempting inline PowerShell 7 installation via winget."
     echo [WARN] Prerequisites script not found in downloaded repository.
     echo [INFO] Attempting to install PowerShell 7 via winget...
-    where pwsh >nul 2>nul
-    if !ERRORLEVEL! EQU 0 (
+    call :resolve_pwsh
+    if defined RESOLVED_PWSH (
         echo [INFO] PowerShell 7 already available. Skipping winget install.
-        call :log "pwsh already present; skipping inline install."
+        call :log "pwsh already present at !RESOLVED_PWSH!; skipping inline install."
     ) else (
         where winget >nul 2>nul
         if !ERRORLEVEL! EQU 0 (
             call :log "Installing PowerShell 7 via winget."
             winget install --id Microsoft.PowerShell --exact --silent --accept-package-agreements --accept-source-agreements
-            if !ERRORLEVEL! EQU 0 (
+            call :refresh_path
+            call :resolve_pwsh
+            if defined RESOLVED_PWSH (
                 echo [OK] PowerShell 7 installed via winget.
-                call :log "winget install completed successfully."
+                call :log "winget install completed successfully. pwsh at !RESOLVED_PWSH!"
             ) else (
                 echo [WARN] winget install returned a non-zero exit code. Continuing anyway.
-                call :log "WARNING: winget install returned non-zero exit code !ERRORLEVEL!."
+                call :log "WARNING: winget install completed but pwsh is still unresolved."
             )
         ) else (
             echo [WARN] winget not available. Skipping inline PowerShell 7 installation.
@@ -397,25 +399,8 @@ call :log "Locating pwsh for setup-config-interactive.ps1 and dev-bootstrap.ps1"
 
 REM After install-prerequisites, pwsh should be on PATH. Refresh PATH from registry.
 call :refresh_path
-
-REM Search for the real pwsh.exe, skipping the WindowsApps execution-alias stub.
-REM The stub (created by winget) does not support -File when called from cmd.exe.
-set "PWSH_EXE="
-for /F "delims=" %%P in ('where pwsh 2^>nul') do (
-    if not defined PWSH_EXE (
-        echo %%P | findstr /I "WindowsApps" >nul 2>nul
-        if errorlevel 1 set "PWSH_EXE=%%P"
-    )
-)
-REM Explicit fallback paths in preference order: real installation dirs only.
-if not defined PWSH_EXE (
-    for %%D in (
-        "%ProgramFiles%\PowerShell\7\pwsh.exe"
-        "C:\Program Files\PowerShell\7\pwsh.exe"
-    ) do (
-        if not defined PWSH_EXE if exist %%D set "PWSH_EXE=%%~D"
-    )
-)
+call :resolve_pwsh
+set "PWSH_EXE=!RESOLVED_PWSH!"
 if not defined PWSH_EXE (
     call :log "ERROR: PowerShell 7 (pwsh) not found after prerequisites step."
     echo [ERROR] PowerShell 7 was not found on this machine.
@@ -590,6 +575,28 @@ if exist "%_ENSURE_DIR%" del /F /Q "%_ENSURE_DIR%" >nul 2>nul
 mkdir "%_ENSURE_DIR%" >nul 2>nul
 if exist "%_ENSURE_DIR%\" exit /b 0
 exit /b 1
+
+:resolve_pwsh
+REM Resolve the real pwsh.exe path. Skip WindowsApps alias stubs.
+set "RESOLVED_PWSH="
+for /F "delims=" %%P in ('where pwsh 2^>nul') do (
+    if not defined RESOLVED_PWSH (
+        echo %%P | findstr /I "\WindowsApps\" >nul 2>nul
+        if errorlevel 1 if exist "%%P" set "RESOLVED_PWSH=%%P"
+    )
+)
+if not defined RESOLVED_PWSH (
+    for %%D in (
+        "%ProgramFiles%\PowerShell\7\pwsh.exe"
+        "%ProgramW6432%\PowerShell\7\pwsh.exe"
+        "%LOCALAPPDATA%\Programs\PowerShell\7\pwsh.exe"
+        "%USERPROFILE%\AppData\Local\Programs\PowerShell\7\pwsh.exe"
+        "C:\Program Files\PowerShell\7\pwsh.exe"
+    ) do (
+        if not defined RESOLVED_PWSH if exist %%D set "RESOLVED_PWSH=%%~D"
+    )
+)
+exit /b 0
 
 :refresh_path
 REM Refresh PATH from the registry so newly installed tools (pwsh) are visible.
