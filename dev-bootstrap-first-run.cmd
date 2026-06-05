@@ -445,7 +445,7 @@ if not defined PWSH_EXE (
     set "EXIT_CODE=60"
     goto cleanup_and_exit
 )
-if not exist "%PWSH_EXE%" (
+if /I not "%PWSH_EXE%"=="pwsh" if not exist "%PWSH_EXE%" (
     call :log "ERROR: Resolved pwsh path does not exist: %PWSH_EXE%"
     echo [ERROR] Resolved PowerShell 7 path is invalid.
     echo         Path: %PWSH_EXE%
@@ -609,11 +609,31 @@ exit /b 1
 :resolve_pwsh
 REM Resolve a working pwsh.exe by probing candidates with a lightweight command.
 set "RESOLVED_PWSH="
+
+REM 1) Try plain command invocation first.
+pwsh -NoLogo -NoProfile -Command "$PSVersionTable.PSVersion.Major" >nul 2>nul
+if !ERRORLEVEL! EQU 0 set "RESOLVED_PWSH=pwsh"
+
+REM 2) Try paths from PATH lookup.
 for /F "delims=" %%P in ('where pwsh 2^>nul') do (
     if not defined RESOLVED_PWSH (
         call :set_pwsh_if_valid "%%~fP"
     )
 )
+
+REM 3) Try App Paths registry entries.
+if not defined RESOLVED_PWSH (
+    for /F "skip=2 tokens=1,2*" %%A in ('reg query "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\pwsh.exe" /ve 2^>nul') do (
+        if /I "%%A"=="(Default)" if not defined RESOLVED_PWSH call :set_pwsh_if_valid "%%~C"
+    )
+)
+if not defined RESOLVED_PWSH (
+    for /F "skip=2 tokens=1,2*" %%A in ('reg query "HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\pwsh.exe" /ve 2^>nul') do (
+        if /I "%%A"=="(Default)" if not defined RESOLVED_PWSH call :set_pwsh_if_valid "%%~C"
+    )
+)
+
+REM 4) Try common installation paths.
 if not defined RESOLVED_PWSH (
     for %%D in (
         "%ProgramFiles%\PowerShell\7\pwsh.exe"
@@ -642,19 +662,22 @@ REM Refresh PATH from the registry so newly installed tools (pwsh) are visible.
 REM Use skip=2 to bypass the HKEY header and blank line; tokens=1,2* for name / type / value.
 set "SYS_PATH="
 set "USR_PATH="
+set "NEW_PATH="
 for /F "skip=2 tokens=1,2*" %%A in ('reg query "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v Path 2^>nul') do (
     if /I "%%A"=="Path" set "SYS_PATH=%%C"
 )
 for /F "skip=2 tokens=1,2*" %%A in ('reg query "HKCU\Environment" /v Path 2^>nul') do (
     if /I "%%A"=="Path" set "USR_PATH=%%C"
 )
-if defined SYS_PATH (
-    if defined USR_PATH (
-        set "PATH=%SYS_PATH%;%USR_PATH%"
+if defined SYS_PATH set "NEW_PATH=%SYS_PATH%"
+if defined USR_PATH (
+    if defined NEW_PATH (
+        set "NEW_PATH=%NEW_PATH%;%USR_PATH%"
     ) else (
-        set "PATH=%SYS_PATH%"
+        set "NEW_PATH=%USR_PATH%"
     )
 )
+if defined NEW_PATH set "PATH=%NEW_PATH%;%PATH%"
 exit /b 0
 
 :write_vbs_unzip
