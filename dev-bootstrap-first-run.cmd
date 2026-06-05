@@ -672,8 +672,16 @@ exit /b 0
 set "_PWSH_CANDIDATE=%~1"
 if "%_PWSH_CANDIDATE%"=="" exit /b 1
 
-REM Candidate can be a command token (pwsh) or a full path.
-if /I not "%_PWSH_CANDIDATE%"=="pwsh" if not exist "%_PWSH_CANDIDATE%" exit /b 1
+REM If candidate is just the command name "pwsh", resolve it via where to get absolute path.
+REM This prevents accepting WindowsApps aliases that don't support -File mode.
+if /I "%_PWSH_CANDIDATE%"=="pwsh" (
+    for /F "delims=" %%P in ('where pwsh 2^>nul') do (
+        set "_PWSH_CANDIDATE=%%~fP"
+    )
+)
+
+REM Candidate must exist as a file
+if not exist "%_PWSH_CANDIDATE%" exit /b 1
 
 REM Validate real script execution support. Some WindowsApps aliases answer -Command
 REM but fail with -File from cmd.exe.
