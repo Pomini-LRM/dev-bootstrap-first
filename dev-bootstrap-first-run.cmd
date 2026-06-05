@@ -342,10 +342,25 @@ if not "%STAGE_READY%"=="1" (
     goto cleanup_and_exit
 )
 
-if not exist "%REPO_DIR%\dev-bootstrap.ps1" (
-    call :log "ERROR: %REPO_DIR%\dev-bootstrap.ps1 not found."
-    echo [ERROR] Bootstrap entry point not found at %REPO_DIR%\dev-bootstrap.ps1.
+set "BOOTSTRAP_SCRIPT="
+if exist "%REPO_DIR%\dev-bootstrap.ps1" set "BOOTSTRAP_SCRIPT=%REPO_DIR%\dev-bootstrap.ps1"
+if not defined BOOTSTRAP_SCRIPT (
+    for /F "delims=" %%F in ('dir /B /S "%REPO_DIR%\dev-bootstrap.ps1" 2^>nul') do (
+        if not defined BOOTSTRAP_SCRIPT set "BOOTSTRAP_SCRIPT=%%F"
+    )
+)
+if not defined BOOTSTRAP_SCRIPT (
+    call :log "ERROR: dev-bootstrap.ps1 was not found under %REPO_DIR%."
+    echo [ERROR] Bootstrap entry point not found in staged repository.
+    echo         Searched under: %REPO_DIR%
     set "EXIT_CODE=40"
+    goto cleanup_and_exit
+)
+if exist "%BOOTSTRAP_SCRIPT%\" (
+    call :log "ERROR: Resolved bootstrap script is a directory: %BOOTSTRAP_SCRIPT%"
+    echo [ERROR] Resolved bootstrap script path is a directory, not a file.
+    echo         Path: %BOOTSTRAP_SCRIPT%
+    set "EXIT_CODE=42"
     goto cleanup_and_exit
 )
 
@@ -455,6 +470,7 @@ if /I not "%PWSH_EXE%"=="pwsh" if not exist "%PWSH_EXE%" (
 
 call :log "Using pwsh at: %PWSH_EXE%"
 call :debug "Bootstrap host: %PWSH_EXE%"
+call :debug "Bootstrap script: %BOOTSTRAP_SCRIPT%"
 
 set "SETUP_SCRIPT=%REPO_DIR%\scripts\setup-config-interactive.ps1"
 if exist "%SETUP_SCRIPT%" (
@@ -473,7 +489,7 @@ if exist "%SETUP_SCRIPT%" (
 
 call :log "Running dev-bootstrap.ps1"
 REM Use -WorkingDirectory instead of pushd so CMD working dir issues do not affect pwsh.
-"%PWSH_EXE%" -NoProfile -ExecutionPolicy Bypass -WorkingDirectory "%REPO_DIR%" -File "%REPO_DIR%\dev-bootstrap.ps1"
+"%PWSH_EXE%" -NoProfile -ExecutionPolicy Bypass -WorkingDirectory "%REPO_DIR%" -File "%BOOTSTRAP_SCRIPT%"
 set "BOOTSTRAP_RC=!ERRORLEVEL!"
 
 call :log "dev-bootstrap.ps1 exited with code !BOOTSTRAP_RC!"
