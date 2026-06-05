@@ -30,6 +30,7 @@ REM ============================================================================
 setlocal EnableExtensions EnableDelayedExpansion
 
 set "EXIT_CODE=0"
+set "SCRIPT_VERSION=2026.06.05.3"
 
 REM ---- Prevent concurrent execution ----------------------------------------
 set "LOCK_FILE=%TEMP%\dev-bootstrap-first-run.lock"
@@ -114,6 +115,7 @@ call :log "Repo URL       : %REPO_URL%"
 call :log "Force          : %FORCE%"
 call :log "Keep staging   : %KEEP%"
 call :log "Debug mode     : %DEBUG%"
+call :log "Script version : %SCRIPT_VERSION%"
 call :log "============================================================"
 
 echo.
@@ -125,6 +127,7 @@ echo  Final folder   : %FINAL_TARGET%
 echo  Source         : %REPO_URL%
 echo  Log file       : %LOG_FILE%
 echo  Debug mode     : %DEBUG%
+echo  Version        : %SCRIPT_VERSION%
 echo ============================================================
 echo.
 echo [INFO] Keep this window open until the process completes.
@@ -469,7 +472,9 @@ if /I not "%PWSH_EXE%"=="pwsh" if not exist "%PWSH_EXE%" (
 )
 
 call :log "Using pwsh at: %PWSH_EXE%"
+echo [INFO] Bootstrap host: %PWSH_EXE%
 call :debug "Bootstrap host: %PWSH_EXE%"
+echo [INFO] Bootstrap script: %BOOTSTRAP_SCRIPT%
 call :debug "Bootstrap script: %BOOTSTRAP_SCRIPT%"
 
 set "SETUP_SCRIPT=%REPO_DIR%\scripts\setup-config-interactive.ps1"
