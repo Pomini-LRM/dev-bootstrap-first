@@ -607,12 +607,11 @@ if exist "%_ENSURE_DIR%\" exit /b 0
 exit /b 1
 
 :resolve_pwsh
-REM Resolve the real pwsh.exe path. Skip WindowsApps alias stubs.
+REM Resolve a working pwsh.exe by probing candidates with a lightweight command.
 set "RESOLVED_PWSH="
 for /F "delims=" %%P in ('where pwsh 2^>nul') do (
     if not defined RESOLVED_PWSH (
-        echo %%P | findstr /I "\WindowsApps\" >nul 2>nul
-        if errorlevel 1 if exist "%%P" set "RESOLVED_PWSH=%%P"
+        call :set_pwsh_if_valid "%%~fP"
     )
 )
 if not defined RESOLVED_PWSH (
@@ -620,12 +619,22 @@ if not defined RESOLVED_PWSH (
         "%ProgramFiles%\PowerShell\7\pwsh.exe"
         "%ProgramW6432%\PowerShell\7\pwsh.exe"
         "%LOCALAPPDATA%\Programs\PowerShell\7\pwsh.exe"
+        "%LOCALAPPDATA%\Microsoft\WindowsApps\pwsh.exe"
         "%USERPROFILE%\AppData\Local\Programs\PowerShell\7\pwsh.exe"
         "C:\Program Files\PowerShell\7\pwsh.exe"
     ) do (
-        if not defined RESOLVED_PWSH if exist %%D set "RESOLVED_PWSH=%%~D"
+        if not defined RESOLVED_PWSH call :set_pwsh_if_valid "%%~D"
     )
 )
+exit /b 0
+
+:set_pwsh_if_valid
+set "_PWSH_CANDIDATE=%~1"
+if "%_PWSH_CANDIDATE%"=="" exit /b 1
+if not exist "%_PWSH_CANDIDATE%" exit /b 1
+"%_PWSH_CANDIDATE%" -NoLogo -NoProfile -Command "$PSVersionTable.PSVersion.Major" >nul 2>nul
+if errorlevel 1 exit /b 1
+set "RESOLVED_PWSH=%_PWSH_CANDIDATE%"
 exit /b 0
 
 :refresh_path
