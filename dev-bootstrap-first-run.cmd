@@ -10,7 +10,7 @@ REM   2. Extract it into %DEST%\repo using curl/tar/Expand-Archive/VBS fallback.
 REM   3. Run install-prerequisites-windows.ps1 (installs PowerShell 7).
 REM   4. Run setup-config-interactive.ps1 (interactive configuration).
 REM   5. Run dev-bootstrap.ps1 (full bootstrap with tokens and tools).
-REM   6. Copy generated config.json and .env to the final repository folder.
+REM   6. Copy generated config.json and, when present, .env to the final repository folder.
 REM   7. Clean up the staging folder.
 REM
 REM Environment variables (optional):
@@ -30,7 +30,7 @@ REM ============================================================================
 setlocal EnableExtensions EnableDelayedExpansion
 
 set "EXIT_CODE=0"
-set "SCRIPT_VERSION=2026.06.05.3"
+set "SCRIPT_VERSION=2026.06.05.4"
 
 REM ---- Prevent concurrent execution ----------------------------------------
 set "LOCK_FILE=%TEMP%\dev-bootstrap-first-run.lock"
@@ -71,7 +71,6 @@ goto parse_args
 :args_done
 
 set "REPO_URL=https://github.com/Pomini-LRM/dev-bootstrap/archive/refs/heads/%REF%.zip"
-set "EXTRACTED_DIR_NAME=dev-bootstrap-%REF%"
 set "TMP_DIR=%DEST%\_tmp"
 set "EXTRACT_DIR=%TMP_DIR%\extract"
 set "ZIP_FILE=%TMP_DIR%\dev-bootstrap.zip"
@@ -79,6 +78,8 @@ set "REPO_DIR=%DEST%\repo"
 set "LOG_DIR=%DEST%\logs"
 set "LOG_FILE=%LOG_DIR%\first-run.log"
 set "VBS_FILE=%TMP_DIR%\unzip.vbs"
+set "SRC_CONFIG=%REPO_DIR%\config\config.json"
+set "SRC_ENV=%REPO_DIR%\.env"
 
 REM ---- Prepare folders -------------------------------------------------------
 call :ensure_dir "%DEST%"
@@ -321,7 +322,14 @@ call :debug "Extracted repository folder: %FOUND_DIR%"
 
 REM Move (rename) to %REPO_DIR%. Use robocopy + rmdir for reliability.
 if exist "%REPO_DIR%" rmdir /S /Q "%REPO_DIR%" >nul 2>nul
-mkdir "%REPO_DIR%" >nul 2>nul
+call :ensure_dir "%REPO_DIR%"
+if errorlevel 1 (
+    call :log "ERROR: Could not create repository staging directory %REPO_DIR%."
+    echo [ERROR] Could not create repository staging directory.
+    echo         Path: %REPO_DIR%
+    set "EXIT_CODE=32"
+    goto cleanup_and_exit
+)
 robocopy "%FOUND_DIR%" "%REPO_DIR%" /E /MOVE /NFL /NDL /NJH /NJS /NP >> "%LOG_FILE%" 2>&1
 REM robocopy returns 0-7 for success.
 if errorlevel 8 (
@@ -492,6 +500,15 @@ if exist "%SETUP_SCRIPT%" (
     echo [WARN] Interactive setup script not found. Skipping.
 )
 
+if not exist "%SRC_CONFIG%" (
+    call :log "ERROR: Interactive setup completed but %SRC_CONFIG% was not created."
+    echo [ERROR] Interactive setup completed but config.json was not found.
+    echo         Expected: %SRC_CONFIG%
+    echo         Re-run with --keep and inspect the setup output above.
+    set "EXIT_CODE=71"
+    goto cleanup_and_exit
+)
+
 call :log "Running dev-bootstrap.ps1"
 REM Use -WorkingDirectory instead of pushd so CMD working dir issues do not affect pwsh.
 "%PWSH_EXE%" -NoProfile -ExecutionPolicy Bypass -WorkingDirectory "%REPO_DIR%" -File "%BOOTSTRAP_SCRIPT%"
@@ -509,41 +526,70 @@ if not "!BOOTSTRAP_RC!"=="0" (
 REM ---- Step 6: Copy generated config files to final folder -------------------
 call :phase "6/7" "Copy generated configuration"
 echo [INFO] Copying generated config files to %FINAL_TARGET% ...
-call :log "Copying generated config.json and .env to final folder."
+call :log "Copying generated config.json and optional .env to final folder."
 
-set "SRC_CONFIG=%REPO_DIR%\config\config.json"
-set "SRC_ENV=%REPO_DIR%\.env"
 set "DST_CONFIG_DIR=%FINAL_TARGET%\config"
 
-if not exist "%FINAL_TARGET%" mkdir "%FINAL_TARGET%" >nul 2>nul
-if not exist "%DST_CONFIG_DIR%" mkdir "%DST_CONFIG_DIR%" >nul 2>nul
+call :ensure_dir "%FINAL_TARGET%"
+if errorlevel 1 (
+    call :log "ERROR: Could not create final target directory %FINAL_TARGET%."
+    echo [ERROR] Could not create final target directory.
+    echo         Path: %FINAL_TARGET%
+    set "EXIT_CODE=82"
+    goto cleanup_and_exit
+)
+call :ensure_dir "%DST_CONFIG_DIR%"
+if errorlevel 1 (
+    call :log "ERROR: Could not create final config directory %DST_CONFIG_DIR%."
+    echo [ERROR] Could not create final config directory.
+    echo         Path: %DST_CONFIG_DIR%
+    set "EXIT_CODE=83"
+    goto cleanup_and_exit
+)
 
-set "COPY_WARN=0"
+set "COPY_ERROR=0"
+set "CONFIG_MISSING=0"
 
 if exist "%SRC_CONFIG%" (
     copy /Y "%SRC_CONFIG%" "%DST_CONFIG_DIR%\config.json" >nul 2>&1
-    call :log "Copied config.json -> %DST_CONFIG_DIR%\config.json"
-    echo        config.json copied.
+    if errorlevel 1 (
+        call :log "ERROR: Failed to copy config.json to %DST_CONFIG_DIR%\config.json"
+        echo [ERROR] Failed to copy config.json to %DST_CONFIG_DIR%\config.json.
+        set "COPY_ERROR=1"
+    ) else (
+        call :log "Copied config.json -> %DST_CONFIG_DIR%\config.json"
+        echo        config.json copied.
+    )
 ) else (
     call :log "WARNING: %SRC_CONFIG% not found, nothing to copy."
-    echo [WARN] config.json was not generated in %REPO_DIR%\config.
-    set "COPY_WARN=1"
+    echo [ERROR] config.json was not generated in %REPO_DIR%\config.
+    set "CONFIG_MISSING=1"
 )
 
 if exist "%SRC_ENV%" (
     copy /Y "%SRC_ENV%" "%FINAL_TARGET%\.env" >nul 2>&1
-    call :log "Copied .env -> %FINAL_TARGET%\.env"
-    echo        .env copied.
+    if errorlevel 1 (
+        call :log "ERROR: Failed to copy .env to %FINAL_TARGET%\.env"
+        echo [ERROR] Failed to copy .env to %FINAL_TARGET%\.env.
+        set "COPY_ERROR=1"
+    ) else (
+        call :log "Copied .env -> %FINAL_TARGET%\.env"
+        echo        .env copied.
+    )
 ) else (
-    call :log "WARNING: %SRC_ENV% not found, nothing to copy."
-    echo [WARN] .env was not generated in %REPO_DIR%.
-    set "COPY_WARN=1"
+    call :log "INFO: %SRC_ENV% not found. Skipping optional .env handoff."
+    echo [INFO] .env was not generated in %REPO_DIR%; skipping optional .env handoff.
 )
 
-if "!COPY_WARN!"=="1" if "!EXIT_CODE!"=="0" (
+if "!COPY_ERROR!"=="1" if "!EXIT_CODE!"=="0" (
+    call :log "ERROR: One or more generated configuration files could not be copied."
+    set "EXIT_CODE=84"
+)
+
+if "!CONFIG_MISSING!"=="1" if "!EXIT_CODE!"=="0" (
     call :log "ERROR: Bootstrap ran but expected output files were not generated."
     echo.
-    echo [ERROR] Bootstrap completed but config.json and/or .env were not produced.
+    echo [ERROR] Bootstrap completed but config.json was not produced.
     echo         Suggestions:
     echo           - Re-run with --keep to inspect %REPO_DIR% and review the log.
     echo           - Make sure you completed all interactive prompts during Step 5.
@@ -600,8 +646,12 @@ REM Subroutines
 REM ============================================================================
 
 :log
->> "%LOG_FILE%" <nul set /p "=[%DATE% %TIME%] %~1"
->> "%LOG_FILE%" echo(
+if not defined LOG_FILE exit /b 0
+for %%L in ("%LOG_FILE%") do (
+    if not exist "%%~dpL." mkdir "%%~dpL" >nul 2>nul
+)
+>> "%LOG_FILE%" <nul set /p "=[%DATE% %TIME%] %~1" 2>nul
+>> "%LOG_FILE%" echo( 2>nul
 exit /b 0
 
 :phase
@@ -621,10 +671,10 @@ exit /b 0
 :ensure_dir
 set "_ENSURE_DIR=%~1"
 if "%_ENSURE_DIR%"=="" exit /b 1
-if exist "%_ENSURE_DIR%\" exit /b 0
-if exist "%_ENSURE_DIR%" del /F /Q "%_ENSURE_DIR%" >nul 2>nul
+if exist "%_ENSURE_DIR%\." exit /b 0
+if exist "%_ENSURE_DIR%" exit /b 1
 mkdir "%_ENSURE_DIR%" >nul 2>nul
-if exist "%_ENSURE_DIR%\" exit /b 0
+if exist "%_ENSURE_DIR%\." exit /b 0
 exit /b 1
 
 :resolve_pwsh

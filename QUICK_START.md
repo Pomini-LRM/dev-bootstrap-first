@@ -35,7 +35,7 @@ A console window opens and runs automatically. Follow the on-screen prompts
 | 4 | Runs `install-prerequisites-windows.ps1` — installs **PowerShell 7** |
 | 5 | Runs `setup-config-interactive.ps1` — interactive configuration wizard |
 | 6 | Runs `dev-bootstrap.ps1` — full bootstrap (Git, tools, repos, ACR images) |
-| 7 | Copies `config.json` and `.env` to `%USERPROFILE%\PominiLRM\dev-bootstrap` |
+| 7 | Copies `config.json` and, when present, `.env` to `%USERPROFILE%\PominiLRM\dev-bootstrap` |
 | 8 | Removes the staging folder |
 
 Log: `%USERPROFILE%\PominiLRM\dev-bootstrap-first\logs\first-run.log` (during run),

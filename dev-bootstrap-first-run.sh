@@ -10,7 +10,7 @@
 #   3. Run install-prerequisites-linux.sh (installs PowerShell 7).
 #   4. Run setup-config-interactive.ps1 (interactive configuration).
 #   5. Run dev-bootstrap.ps1 (full bootstrap).
-#   6. Copy generated config.json and .env into the final repository folder.
+#   6. Copy generated config.json and, when present, .env into the final repository folder.
 #   7. Clean up the staging folder.
 #
 # Environment variables (optional):
@@ -222,7 +222,7 @@ fi
 # ---- Step 6: Copy config files to final folder ------------------------------
 echo
 echo "Copying generated config files to $FINAL_TARGET ..."
-log "Copying generated config.json and .env to final folder."
+log "Copying generated config.json and optional .env to final folder."
 
 SRC_CONFIG="$REPO_DIR/config/config.json"
 SRC_ENV="$REPO_DIR/.env"

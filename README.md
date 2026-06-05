@@ -36,7 +36,7 @@ The launcher will:
 4. Run `scripts\install-prerequisites-windows.ps1` (installs **PowerShell 7**).
 5. Run `scripts\setup-config-interactive.ps1` (interactive configuration wizard).
 6. Run `dev-bootstrap.ps1` (full bootstrap: Git, tools, repo cloning, ACR images, ...).
-7. Copy the generated `config.json` and `.env` into the handoff folder
+7. Copy the generated `config.json` and, when present, `.env` into the handoff folder
    (default `%USERPROFILE%\PominiLRM\dev-bootstrap`).
 8. Delete the staging folder.
 
@@ -97,7 +97,7 @@ The launcher mirrors the Windows behavior:
 - Extracts with `unzip`, falls back to `python3 -c 'import zipfile; ...'`.
 - Runs `scripts/install-prerequisites-linux.sh`, then
   `scripts/setup-config-interactive.ps1`, then `dev-bootstrap.ps1`.
-- Copies `config.json` and `.env` into the final folder.
+- Copies `config.json` and, when present, `.env` into the final folder.
 - Removes the staging folder.
 
 ### Customizing the Linux/macOS launcher
@@ -154,7 +154,7 @@ README.md                     This document
    - `dev-bootstrap.ps1` full run.
 5. Verify that:
    - `%USERPROFILE%\PominiLRM\dev-bootstrap\config\config.json` exists (handoff folder).
-   - `%USERPROFILE%\PominiLRM\dev-bootstrap\.env` exists (handoff folder).
+   - `%USERPROFILE%\PominiLRM\dev-bootstrap\.env` exists if the downstream bootstrap generated it.
    - `%USERPROFILE%\PominiLRM\dev-bootstrap-first` has been removed.
    - `%TEMP%\dev-bootstrap-first-run.log` contains the full run history.
 
@@ -180,7 +180,7 @@ to inspect intermediate artifacts.
 | `[ERROR] Bootstrap entry point not found`     | The ZIP layout changed. Set `DEV_BOOTSTRAP_REF` to a tag known to contain the script.    |
 | `[ERROR] PowerShell 7 was not installed`      | `winget` was unavailable. Install PowerShell 7 manually, then re-run the launcher.       |
 | `setup-config-interactive.ps1 failed`         | Configuration values are invalid. Re-run with `--keep` and re-launch the script by hand. |
-| Final folder missing, config files not copied | Handoff folder could not be created. Check permissions on `DEV_BOOTSTRAP_FINAL`. |
+| Final folder missing, config files not copied | Handoff folder could not be created, or `config.json` was not generated. Check permissions on `DEV_BOOTSTRAP_FINAL` and the setup output. |
 
 All steps log to `<DEST>/logs/first-run.log` while running, and to
 `%TEMP%\dev-bootstrap-first-run.log` (Windows) / `/tmp/dev-bootstrap-first-run.log`
