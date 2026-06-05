@@ -109,8 +109,8 @@ echo [INFO] Keep this window open until the process completes.
 echo [INFO] You may be prompted for elevation during prerequisites installation.
 
 call :phase "1/7" "Download repository"
-call :debug "Launcher path: %~f0"
-call :debug "User: %USERNAME% | Machine: %COMPUTERNAME%"
+call :debug "Launcher started"
+call :debug "Session initialized"
 
 REM ---- Step 1: Download ZIP (skip if already extracted and not forced) ------
 if "%FORCE%"=="0" if exist "%REPO_DIR%\dev-bootstrap.ps1" (
@@ -461,12 +461,13 @@ echo.
 echo ------------------------------------------------------------
 echo [PHASE %~1] %~2
 echo ------------------------------------------------------------
-call :log "PHASE %~1 - %~2"
 exit /b 0
 
 :debug
-if "%DEBUG%"=="1" echo [DEBUG] %~1
-call :log "DEBUG: %~1"
+if "%DEBUG%"=="1" (
+    echo [DEBUG] %~1
+    call :log "DEBUG: %~1"
+)
 exit /b 0
 
 :refresh_path
