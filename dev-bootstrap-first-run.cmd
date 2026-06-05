@@ -342,8 +342,30 @@ if exist "%PREREQ_SCRIPT%" (
         echo [WARN] Prerequisite installer reported issues. Continuing anyway.
     )
 ) else (
-    call :log "WARNING: %PREREQ_SCRIPT% not found, skipping."
-    echo [WARN] Prerequisites script not found. Skipping.
+    call :log "WARNING: %PREREQ_SCRIPT% not found. Attempting inline PowerShell 7 installation via winget."
+    echo [WARN] Prerequisites script not found in downloaded repository.
+    echo [INFO] Attempting to install PowerShell 7 via winget...
+    where pwsh >nul 2>nul
+    if !ERRORLEVEL! EQU 0 (
+        echo [INFO] PowerShell 7 already available. Skipping winget install.
+        call :log "pwsh already present; skipping inline install."
+    ) else (
+        where winget >nul 2>nul
+        if !ERRORLEVEL! EQU 0 (
+            call :log "Installing PowerShell 7 via winget."
+            winget install --id Microsoft.PowerShell --exact --silent --accept-package-agreements --accept-source-agreements
+            if !ERRORLEVEL! EQU 0 (
+                echo [OK] PowerShell 7 installed via winget.
+                call :log "winget install completed successfully."
+            ) else (
+                echo [WARN] winget install returned a non-zero exit code. Continuing anyway.
+                call :log "WARNING: winget install returned non-zero exit code !ERRORLEVEL!."
+            )
+        ) else (
+            echo [WARN] winget not available. Skipping inline PowerShell 7 installation.
+            call :log "WARNING: winget not found; cannot install PowerShell 7 inline."
+        )
+    )
 )
 
 REM ---- Step 5: Interactive setup + main bootstrap ----------------------------
@@ -355,19 +377,30 @@ REM After install-prerequisites, pwsh should be on PATH. Refresh PATH from regis
 call :refresh_path
 
 set "PWSH_EXE="
-where pwsh >nul 2>nul
-if %ERRORLEVEL% EQU 0 (
-    for /F "delims=" %%P in ('where pwsh') do (
-        if not defined PWSH_EXE set "PWSH_EXE=%%P"
+for /F "delims=" %%P in ('where pwsh 2^>nul') do (
+    if not defined PWSH_EXE set "PWSH_EXE=%%P"
+)
+REM Explicit fallback paths: covers winget per-user and system-wide installs
+if not defined PWSH_EXE (
+    for %%D in (
+        "%ProgramFiles%\PowerShell\7\pwsh.exe"
+        "%LOCALAPPDATA%\Microsoft\WindowsApps\pwsh.exe"
+        "C:\Program Files\PowerShell\7\pwsh.exe"
+    ) do (
+        if not defined PWSH_EXE if exist %%D set "PWSH_EXE=%%~D"
     )
 )
-if "%PWSH_EXE%"=="" (
-    if exist "%ProgramFiles%\PowerShell\7\pwsh.exe" set "PWSH_EXE=%ProgramFiles%\PowerShell\7\pwsh.exe"
-)
-set "PWSH_EXE=%PWSH_EXE:\"=%"
-if "%PWSH_EXE%"=="" (
+if not defined PWSH_EXE (
     call :log "ERROR: PowerShell 7 (pwsh) not found after prerequisites step."
-    echo [ERROR] PowerShell 7 was not installed correctly. Open a new terminal and re-run.
+    echo [ERROR] PowerShell 7 was not found on this machine.
+    echo         Possible causes:
+    echo           - The prerequisites script was missing from the downloaded repository.
+    echo           - The winget install failed or requires a reboot to take effect.
+    echo         Suggested fix:
+    echo           1. Install PowerShell 7 manually:
+    echo                winget install Microsoft.PowerShell
+    echo              or download from https://aka.ms/pscore6
+    echo           2. Open a NEW terminal window and re-run this script.
     set "EXIT_CODE=60"
     goto cleanup_and_exit
 )
@@ -535,9 +568,22 @@ exit /b 1
 
 :refresh_path
 REM Refresh PATH from the registry so newly installed tools (pwsh) are visible.
-for /F "tokens=2*" %%A in ('reg query "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v Path 2^>nul ^| findstr /I "Path"') do set "SYS_PATH=%%B"
-for /F "tokens=2*" %%A in ('reg query "HKCU\Environment" /v Path 2^>nul ^| findstr /I "Path"') do set "USR_PATH=%%B"
-if defined SYS_PATH set "PATH=%SYS_PATH%;%USR_PATH%"
+REM Use skip=2 to bypass the HKEY header and blank line; tokens=1,2* for name / type / value.
+set "SYS_PATH="
+set "USR_PATH="
+for /F "skip=2 tokens=1,2*" %%A in ('reg query "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v Path 2^>nul') do (
+    if /I "%%A"=="Path" set "SYS_PATH=%%C"
+)
+for /F "skip=2 tokens=1,2*" %%A in ('reg query "HKCU\Environment" /v Path 2^>nul') do (
+    if /I "%%A"=="Path" set "USR_PATH=%%C"
+)
+if defined SYS_PATH (
+    if defined USR_PATH (
+        set "PATH=%SYS_PATH%;%USR_PATH%"
+    ) else (
+        set "PATH=%SYS_PATH%"
+    )
+)
 exit /b 0
 
 :write_vbs_unzip
